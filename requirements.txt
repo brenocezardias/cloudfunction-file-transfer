@@ -1,0 +1,2 @@
+google-cloud-storage>=1.5.0
+pysftp>=0.2.9
