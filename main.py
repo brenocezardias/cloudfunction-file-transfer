@@ -11,9 +11,78 @@ import logging
 import os
 import re
 
+import gzip
+import zipfile
+
 # Parameters
 # project name
 PROJECT = os.environ['PROJECT']
+
+class CompressClass(object, metaclass=abc.ABCMeta):
+    def __init__(self):
+        super().__init__()
+    
+    @abc.abstractmethod
+    def compress_file(self, file_path):
+        raise NotImplementedError('Abstract method')
+    
+    @abc.abstractmethod
+    def decompress_file(self, file_path, encoding):
+        raise NotImplementedError('Abstract method')
+
+class GzipCompressClass(CompressClass):
+    def __init__(self):
+        super().__init__()
+    
+    def compress_file(self, file_path):
+        file = '/tmp/' + file_path.split('/')[-1]
+        with open(file, 'rb') as r:
+            with gzip.open(file + '.gz', 'wb') as f:
+                f.write(r.read())
+        
+        os.remove(file)
+
+        return file_path + '.gz'
+    
+    def decompress_file(self, file_path):
+        file_name = file_path.split('/')[-1]
+        source = '/tmp/' + file_name
+        destination = file_name[:-3] if '.gz' in file_name else file_name + '01'
+        with gzip.open(source, 'rb') as f:
+            with open('/tmp/' + destination, 'wb') as w:
+                w.write(f.read())
+        
+        os.remove('/tmp/' + file_name)
+
+        return destination
+
+class ZipCompressClass(CompressClass):
+    def __init__(self):
+        super().__init__()
+    
+    def compress_file(self, file_path):
+        file = '/tmp/' + file_path.split('/')[-1]
+        zip = zipfile.ZipFile(file + '.zip', 'w', compression=zipfile.ZIP_DEFLATED) 
+        zip.write(file, arcname=file_path.split('/')[-1])
+        zip.close()
+
+        os.remove(file)
+
+        return file_path + '.zip'
+    
+    def decompress_file(self, file_path):
+        file_name = file_path.split('/')[-1]
+        source = '/tmp/' + file_name
+        destination = file_name[:-4] if '.zip' in file_name else file_name + '01'
+        zip = zipfile.ZipFile(source, 'r', compression=zipfile.ZIP_DEFLATED)
+        for name in zip.namelist():
+            with open('/tmp/' + name, 'wb') as f:
+                f.write(zip.read(name))
+        
+        os.remove('/tmp/' + file_name)
+
+        return destination
+        
 
 # Abstract base class for the file transfers
 class FileTransfer(object, metaclass=abc.ABCMeta):
@@ -60,9 +129,7 @@ class GcsFileTransfer(FileTransfer):
     def download_file(self, file_path):
         # removing the leading / so as to not create a folder with it
         file_name = file_path.split('/')[-1]
-        # creating the final file path
-        path = self.conn_str.path[1:] + ('' if self.conn_str.path.endswith('/') else '/') + file_name
-        blob = self.bucket.blob(path)
+        blob = self.bucket.blob(file_path[1:])
         # downloading to local storage
         blob.download_to_filename('/tmp/' + file_name)
         logging.info('Downloaded file %s to bucket %s successfully' % (file_path, self.conn_str.netloc))
@@ -87,7 +154,7 @@ class GcsFileTransfer(FileTransfer):
 
     def list_files(self):
         # from the blob file list return only the file names
-        return [f.name for f in self.bucket.list_blobs(prefix=self.conn_str.path[1:])]
+        return ['/' + f.name for f in self.bucket.list_blobs(prefix=self.conn_str.path[1:])]
     
     def disconnect(self):
         # gcs client does not require an explicit disconnect
@@ -186,6 +253,11 @@ TRANSFER_TYPES = {
     'gs': GcsFileTransfer
 }
 
+COMPRESSION_TYPES = {
+    'gzip': GzipCompressClass,
+    'zip': ZipCompressClass
+}
+
 def transfer_file(event, context):
     # parsing the message
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
@@ -194,10 +266,14 @@ def transfer_file(event, context):
     # parsing the URI of the connection string provided
     source_conn_str = parse.urlparse(transfer_info['source_connection_string'], allow_fragments=False)
     dest_conn_str = parse.urlparse(transfer_info['destination_connection_string'])
+    compression = transfer_info['compress_algorithm'] if 'compress_algorithm' in transfer_info else None
+    decompression = transfer_info['decompress_algorithm'] if 'decompress_algorithm' in transfer_info else None    
 
     # deciding which class to instantiate from the scheme of the URI
     source_type = TRANSFER_TYPES.get(source_conn_str.scheme)
     destination_type = TRANSFER_TYPES.get(dest_conn_str.scheme)
+    compress_type = COMPRESSION_TYPES.get(compression)
+    decompress_type = COMPRESSION_TYPES.get(decompression)
 
     if(source_type is None):
         raise LookupError('Type %s not supported' % source_conn_str.scheme)
@@ -205,8 +281,16 @@ def transfer_file(event, context):
     if(destination_type is None):
         raise LookupError('Type %s not supported' % dest_conn_str.scheme)
 
+    if('compress_algorithm' in transfer_info and compress_type is None):
+        raise LookupError('Type %s not supported' % compression)
+    
+    if('decompress_algorithm' in transfer_info and decompress_type is None):
+        raise LookupError('Type %s not supported' % decompression)
+
     source = source_type(source_conn_str)
     destination = destination_type(dest_conn_str)
+    compression = compress_type() if compress_type is not None else None
+    decompression = decompress_type() if decompress_type is not None else None
     
     source.connect()
     destination.connect()
@@ -214,6 +298,13 @@ def transfer_file(event, context):
     # list files and transfer them one by one
     for file in source.list_files():
         file_name = source.download_file(file)
+
+        if(decompression is not None):
+            file_name = decompression.decompress_file(file_name)
+
+        if(compression is not None):
+            file_name = compression.compress_file(file_name)
+
         destination.upload_file(file_name)
 
         os.remove('/tmp/' + file_name.split('/')[-1])
@@ -225,9 +316,10 @@ def transfer_file(event, context):
 
 if __name__ == '__main__':
     event = '''{
-    "source_connection_string": "gs://teste-dataflow/temp2/",
-    "destination_connection_string": "gs://teste-dataflow/temp/",
-    "remove_file": False
+    "source_connection_string": "gs://teste-dataflow/temp2/20180801_SOREPAROS_1301_1.txt.zip",
+    "destination_connection_string": "gs://teste-dataflow/temp3/",
+    "remove_file": False,
+    "decompress_algorithm": "zip"
 }'''
     
     msg = {

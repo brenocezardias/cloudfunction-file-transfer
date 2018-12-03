@@ -6,15 +6,24 @@ A função é baseada em uma mensagem do Pub/Sub que deve ser um JSON no seguint
 {
     "source_connection_string": "ftp://FTP/TEMP?username=user&password=pass",
     "destination_connection_string": "gs://BUCKET/temp/",
-    "remove_file": False
+    "remove_file": False,
+    "compress_algorithm": "zip",
+    "decompress_algorithm": "zip"
 }
 ```
 O atributo `remove_file` determina se o arquivo deve ou não ser removido da origem caso ele seja copiado com sucesso para o destino.
+
+Os atributos `compress_algorithm` e `decompress_algorithm` determinam que o arquivo deve ser compactado ou descompactado, respectivamente, antes de ser enviado para o destino.
 
 As connection strings devem seguir o padrão de URI. Atualmente suportamos as seguintes conexões:
 
 * FTP - ftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD
 * GCS - gs://BUCKET/PATH/
+
+Os tipos de compactação atualmente suportados são os seguintes:
+
+* gzip
+* zip
 
 As possibilidades de filtros variam de acordo com o tipo de conexão. O FTP permite usar o `*` em várias posições para criar filtros, ao passo que o GCS só permite filtros por prefixo.
 
