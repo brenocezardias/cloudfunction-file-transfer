@@ -73,15 +73,18 @@ class ZipCompressClass(CompressClass):
     def decompress_file(self, file_path):
         file_name = file_path.split('/')[-1]
         source = '/tmp/' + file_name
-        destination = file_name[:-4] if '.zip' in file_name else file_name + '01'
         zip = zipfile.ZipFile(source, 'r', compression=zipfile.ZIP_DEFLATED)
+        
+        if(len(zip.namelist())) > 1:
+            raise RuntimeError('Zip file must contain a single file')
+
         for name in zip.namelist():
             with open('/tmp/' + name, 'wb') as f:
                 f.write(zip.read(name))
         
         os.remove('/tmp/' + file_name)
 
-        return destination
+        return name
         
 
 # Abstract base class for the file transfers
