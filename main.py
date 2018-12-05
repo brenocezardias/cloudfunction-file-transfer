@@ -311,7 +311,7 @@ def transfer_file(event, context):
         destination.upload_file(file_name)
 
         os.remove('/tmp/' + file_name.split('/')[-1])
-        if(transfer_info['remove_file']):
+        if('remove_file' in transfer_info and transfer_info['remove_file']):
             source.remove_file(file)
     
     source.disconnect()
