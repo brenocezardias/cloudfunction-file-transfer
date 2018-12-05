@@ -303,18 +303,16 @@ def transfer_file(event, context):
         file_name = source.download_file(file)
 
         if(decompression is not None):
-            original_file = file_name
             file_name = decompression.decompress_file(file_name)
 
         if(compression is not None):
-            original_file = file_name
             file_name = compression.compress_file(file_name)
 
         destination.upload_file(file_name)
 
         os.remove('/tmp/' + file_name.split('/')[-1])
         if(transfer_info['remove_file']):
-            source.remove_file(original_file)
+            source.remove_file(file)
     
     source.disconnect()
     destination.disconnect()
