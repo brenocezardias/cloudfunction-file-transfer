@@ -10,7 +10,7 @@ import base64
 import logging
 import os
 import re
-
+import fnmatch
 import gzip
 import zipfile
 
@@ -75,8 +75,9 @@ class ZipCompressClass(CompressClass):
         source = '/tmp/' + file_name
         zip = zipfile.ZipFile(source, 'r', compression=zipfile.ZIP_DEFLATED)
         
-        if(len(zip.namelist())) > 1:
-            raise RuntimeError('Zip file must contain a single file')
+        # Ensuring that the zip contains only a single file
+        if(len(zip.namelist())) > 0:
+            raise Exception('Zip file must contain a single file')
 
         for name in zip.namelist():
             with open('/tmp/' + name, 'wb') as f:
@@ -157,7 +158,8 @@ class GcsFileTransfer(FileTransfer):
 
     def list_files(self):
         # from the blob file list return only the file names
-        return ['/' + f.name for f in self.bucket.list_blobs(prefix=self.conn_str.path[1:])]
+        files = ['/' + f.name for f in self.bucket.list_blobs(prefix=self.conn_str.path[1:self.conn_str.path.rfind('/')])]
+        return fnmatch.filter(files, '*' + self.conn_str.path[self.conn_str.path.rfind('/'):])
     
     def disconnect(self):
         # gcs client does not require an explicit disconnect
@@ -204,7 +206,8 @@ class FtpFileTransfer(FileTransfer):
         logging.info('File %s removed successfully' % file_name)
 
     def list_files(self):
-        return list(self.ftp.nlst(self.conn_str.path))
+        res = self.ftp.nlst(self.conn_str.path[:self.conn_str.path.rfind('/')])
+        return fnmatch.filter(res, '*' + self.conn_str.path[self.conn_str.path.rfind('/'):])
 
 # Concrete type for SFTP transfers
 class SftpFileTransfer(FileTransfer):
@@ -246,8 +249,10 @@ class SftpFileTransfer(FileTransfer):
         logging.info('File %s removed successfully' % file_name)
 
     def list_files(self):
+        folder_path = self.conn_str.path[:self.conn_str.path.rfind('/')]
         # listdir does not include the folder path, so we manually add it
-        return ['{}/{}'.format(self.conn_str.path, f) for f in self.sftp.listdir(self.conn_str.path)]
+        res = ['{}/{}'.format(folder_path, f) for f in self.sftp.listdir(folder_path)]
+        return fnmatch.filter(res, '*' + self.conn_str.path[self.conn_str.path.rfind('/'):])
 
 # Map of the URI scheme to their respective classes
 TRANSFER_TYPES = {
@@ -295,27 +300,30 @@ def transfer_file(event, context):
     compression = compress_type() if compress_type is not None else None
     decompression = decompress_type() if decompress_type is not None else None
     
-    source.connect()
-    destination.connect()
+    try:
+        source.connect()
+        destination.connect()
 
-    # list files and transfer them one by one
-    for file in source.list_files():
-        file_name = source.download_file(file)
+        # list files and transfer them one by one
+        for file in source.list_files():
+            file_name = source.download_file(file)
 
-        if(decompression is not None):
-            file_name = decompression.decompress_file(file_name)
+            if(decompression is not None):
+                file_name = decompression.decompress_file(file_name)
 
-        if(compression is not None):
-            file_name = compression.compress_file(file_name)
+            if(compression is not None):
+                file_name = compression.compress_file(file_name)
 
-        destination.upload_file(file_name)
+            destination.upload_file(file_name)
 
-        os.remove('/tmp/' + file_name.split('/')[-1])
-        if('remove_file' in transfer_info and transfer_info['remove_file']):
-            source.remove_file(file)
-    
-    source.disconnect()
-    destination.disconnect()
+            os.remove('/tmp/' + file_name.split('/')[-1])
+            if('remove_file' in transfer_info and transfer_info['remove_file']):
+                source.remove_file(file)
+    except Exception as error:
+        raise RuntimeError('Error during execution') from error
+    finally:
+        source.disconnect()
+        destination.disconnect()
 
 if __name__ == '__main__':
     event = '''{

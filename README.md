@@ -17,19 +17,26 @@ Os atributos `compress_algorithm` e `decompress_algorithm` determinam que o arqu
 
 As connection strings devem seguir o padrão de URI. Atualmente suportamos as seguintes conexões:
 
-* FTP - ftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD
-* GCS - gs://BUCKET/PATH/
+* FTP - `ftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD`
+* SFTP - `sftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD`
+* GCS - `gs://BUCKET/PATH/`
 
 Os tipos de compactação atualmente suportados são os seguintes:
 
 * gzip
 * zip
 
-As possibilidades de filtros variam de acordo com o tipo de conexão. O FTP permite usar o `*` em várias posições para criar filtros, ao passo que o GCS só permite filtros por prefixo.
+**ATENÇÃO**: os arquivos compactados recebidos como origem devem, obrigatoriamente, conter apenas um arquivo. Da mesma forma, cada arquivo enviado para o destino será compactado em seu próprio arquivo.
+
+Para dar um padrão mínimo de consistência, os métodos de listar arquivos usados internamente listam todos os arquivos no nível da última parte do PATH e então fazemos o filtro via [fnmatch](https://docs.python.org/3.4/library/fnmatch.html) na parte final.
+
+Por exemplo, vamos supor um PATH = `/ARQUIVOS/*_log.txt`. Primeiro listamos todos os arquivos em `/ARQUIVOS/`. Nessa lista, fazemos o filtro `*_log.txt`. Com isso, pelo menos no último nível teremos um comportamento igual em todos os tipos de conexão (ou seja, isso reduz a inconsistência no fato que uma conexão FTP aceita *wildcards* em qualquer local, ao passo que o GCS só permite ter um prefixo).
+
+**ATENÇÃO**: nenhuma validação é feita no caminho para o diretório. Ou seja, uma requisição do tipo `/ARQUIVOS/*/*_log.txt` irá funcionar para conexões FTP mas não em GCS. Lembre-se que a função só é recomendada em volumes relativamente pequenos de dados/arquivos.
 
 ## Environment Variables
 
-* **PROJECT** = Id do projeto (ex: dotzcloud-datalabs-sandbox)
+* **PROJECT** = Id do projeto (ex: modular-aileron-191222)
 
 ## Deployment
 
