@@ -76,7 +76,7 @@ class ZipCompressClass(CompressClass):
         zip = zipfile.ZipFile(source, 'r', compression=zipfile.ZIP_DEFLATED)
         
         # Ensuring that the zip contains only a single file
-        if(len(zip.namelist())) > 0:
+        if(len(zip.namelist())) > 1:
             raise Exception('Zip file must contain a single file')
 
         for name in zip.namelist():
