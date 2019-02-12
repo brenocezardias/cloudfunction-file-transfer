@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from google.cloud import storage
-from ast import literal_eval
 from urllib import parse
 import pysftp
 import abc
@@ -13,6 +12,7 @@ import re
 import fnmatch
 import gzip
 import zipfile
+import json
 
 # Parameters
 # project name
@@ -269,7 +269,7 @@ COMPRESSION_TYPES = {
 def transfer_file(event, context):
     # parsing the message
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
-    transfer_info = literal_eval(pubsub_message)
+    transfer_info = json.loads(pubsub_message)
 
     # parsing the URI of the connection string provided
     source_conn_str = parse.urlparse(transfer_info['source_connection_string'], allow_fragments=False)
