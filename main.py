@@ -172,11 +172,12 @@ class FtpFileTransfer(FileTransfer):
         self.conn_str = connection_string
     
     def connect(self):
+        self.ftp = ftplib.FTP()
         # checking if a port was specified to connect
         if(self.conn_str.netloc.find(':') > -1):
-            self.ftp = ftplib.FTP(self.conn_str.netloc.split(':')[0], self.conn_str.netloc.split(':')[1])
+            self.ftp.connect(self.conn_str.netloc.split(':')[0], int(self.conn_str.netloc.split(':')[1]))
         else:
-            self.ftp = ftplib.FTP(self.conn_str.netloc)
+            self.ftp.connect(self.conn_str.netloc)
         logging.info('Connected to FTP: ' + self.conn_str.netloc)
         # parsing the query parameters to a dictionary for the login components
         auth_info = dict(parse.parse_qs(self.conn_str.query))
@@ -228,7 +229,7 @@ class SftpFileTransfer(FileTransfer):
         # checking if a port was specified to connect
         if(self.conn_str.netloc.find(':') > -1):
             self.sftp = pysftp.Connection(
-                self.conn_str.netloc.split(':')[0], port=self.conn_str.netloc.split(':')[1],
+                self.conn_str.netloc.split(':')[0], port=int(self.conn_str.netloc.split(':')[1]),
                 username=auth_info['username'][0], password=auth_info['password'][0], cnopts=cnopts
             )
         else:
