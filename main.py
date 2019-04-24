@@ -320,6 +320,7 @@ def transfer_file(event, context):
 
         # list files and transfer them one by one
         for file in source.list_files():
+            logging.info('Transferring file %s to destination %s' % (file, dest_conn_str))
             file_name = source.download_file(file)
 
             if(decompression is not None):
