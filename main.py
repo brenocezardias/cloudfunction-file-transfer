@@ -323,17 +323,21 @@ def transfer_file(event, context):
             logging.info('Transferring file %s to destination %s' % (file, dest_conn_str))
             file_name = source.download_file(file)
 
-            if(decompression is not None):
-                file_name = decompression.decompress_file(file_name)
+            try:
+                if(decompression is not None):
+                    file_name = decompression.decompress_file(file_name)
 
-            if(compression is not None):
-                file_name = compression.compress_file(file_name)
+                if(compression is not None):
+                    file_name = compression.compress_file(file_name)
 
-            destination.upload_file(file_name)
+                destination.upload_file(file_name)
 
-            os.remove('/tmp/' + file_name.split('/')[-1])
-            if('remove_file' in transfer_info and transfer_info['remove_file']):
-                source.remove_file(file)
+                if('remove_file' in transfer_info and transfer_info['remove_file']):
+                    source.remove_file(file)
+            except Exception as error:
+                raise RuntimeError('Error during execution') from error
+            finally:
+                os.remove('/tmp/' + file_name.split('/')[-1])
     except Exception as error:
         raise RuntimeError('Error during execution') from error
     finally:
