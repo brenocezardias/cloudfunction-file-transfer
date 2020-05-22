@@ -17,6 +17,8 @@ import json
 # Parameters
 # project name
 PROJECT = os.environ['PROJECT']
+# debug messages
+PRINT_MSG = os.environ['PRINT_MSG'] if 'PRINT_MSG' in os.environ else False
 
 class CompressClass(object, metaclass=abc.ABCMeta):
     def __init__(self):
@@ -283,6 +285,8 @@ COMPRESSION_TYPES = {
 def transfer_file(event, context):
     # parsing the message
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
+    if PRINT_MSG:
+        logging.debug(pubsub_message)
     transfer_info = json.loads(pubsub_message)
 
     # parsing the URI of the connection string provided
