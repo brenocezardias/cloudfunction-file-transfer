@@ -30,6 +30,7 @@ def transfer_file(event, context):
     # parsing the message
     pubsub_message = base64.b64decode(event['data']).decode('utf-8')
     transfer_info = json.loads(pubsub_message)
+    logging.info(transfer_info)
 
     if prevent_infinite_retry(transfer_info.get('event_date', datetime.now().isoformat())):
         logging.error('{} aborted'.format(transfer_info))
@@ -59,7 +60,7 @@ def transfer_file(event, context):
     if('decompress_algorithm' in transfer_info and decompress_type is None):
         raise LookupError('Type %s not supported' % decompression)
 
-    source = source_type(source_conn_str)
+    source = source_type(source_conn_str, transfer_info.get('service_account'))
     destination = destination_type(dest_conn_str)
     compression = compress_type() if compress_type is not None else None
     decompression = decompress_type() if decompress_type is not None else None

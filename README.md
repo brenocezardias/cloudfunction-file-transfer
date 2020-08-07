@@ -8,12 +8,19 @@ A função é baseada em uma mensagem do Pub/Sub que deve ser um JSON no seguint
     "destination_connection_string": "gs://BUCKET/temp/",
     "remove_file": False,
     "compress_algorithm": "zip",
-    "decompress_algorithm": "zip"
+    "decompress_algorithm": "zip",
+    "event_date": "2020-07-01T23:00:00+00:00",
+    "service_account": "gs://BUCKET/service-account-json.json"
 }
 ```
 O atributo `remove_file` determina se o arquivo deve ou não ser removido da origem caso ele seja copiado com sucesso para o destino.
 
 Os atributos `compress_algorithm` e `decompress_algorithm` determinam que o arquivo deve ser compactado ou descompactado, respectivamente, antes de ser enviado para o destino.
+
+O atributo `event_date`, se fornecido, será utilizado para encerrar as re-tentativas após 1 hora de falhas (o GCF encerra após 7 dias de tentativas).
+
+O atributo `service_account`, se fornecido, será utilizado para instanciar clientes GCS usando outra service account do GCP.
+Só é utilizado para GCS e, caso o atributo não seja fornecido, irá utilizar a conta de serviço definida no GCF.
 
 As connection strings devem seguir o padrão de URI. Atualmente suportamos as seguintes conexões:
 

@@ -2,6 +2,7 @@
 
 from google.cloud import storage
 from urllib import parse
+import uuid
 import ftplib
 import pysftp
 import abc
@@ -15,8 +16,9 @@ PROJECT = os.environ['PROJECT']
 
 # Abstract base class for the file transfers
 class FileTransfer(object, metaclass=abc.ABCMeta):
-    def __init__(self, connection_string: str):
+    def __init__(self, connection_string: str, service_account:str = None):
         self.connection_string = connection_string
+        self.service_account = service_account
         super().__init__()
 
     @abc.abstractmethod
@@ -45,13 +47,21 @@ class FileTransfer(object, metaclass=abc.ABCMeta):
 
 # Concrete type for Google Cloud Storage Transfers
 class GcsFileTransfer(FileTransfer):
-    def __init__(self, connection_string):
+    def __init__(self, connection_string, service_account:str = None):
         self.gcs = None
         self.bucket = None
         self.conn_str = connection_string
+        self.service_account = service_account
     
     def connect(self):
-        self.gcs = storage.Client(project=PROJECT)
+        if self.service_account:
+            self.auth_file = '/tmp/{}'.format(uuid.uuid4())
+            client = storage.Client(project=PROJECT)
+            with open(self.auth_file, 'wb') as f:
+                client.download_blob_to_file(self.service_account, f)
+            self.gcs = storage.Client.from_service_account_json(self.auth_file)
+        else:
+            self.gcs = storage.Client(project=PROJECT)
         self.bucket = self.gcs.get_bucket(self.conn_str.netloc)
         logging.info('Connected to GCS on project: ' + PROJECT)
     
@@ -67,18 +77,14 @@ class GcsFileTransfer(FileTransfer):
     
     def upload_file(self, file_path):
         # creating the final file path
-        path = self.conn_str.path[1:] + ('' if self.conn_str.path.endswith('/') else '/') + file_path
+        path = self.conn_str.path[1:] + file_path
         blob = self.bucket.blob(path)
         # uploading from local storage
         blob.upload_from_filename('/tmp/' + file_path)
         logging.info('Uploaded file %s to bucket %s successfully' % (file_path, self.conn_str.netloc))
     
     def remove_file(self, file_path):
-        # removing the leading / so as to not create a folder with it
-        file_name = file_path.split('/')[-1]
-        # creating the final file path
-        path = self.conn_str.path[1:] + ('' if self.conn_str.path.endswith('/') else '/') + file_name
-        self.bucket.delete_blob(path)
+        self.bucket.delete_blob(file_path[1:])
         logging.info('Removed file %s to bucket %s successfully' % (file_path, self.conn_str.netloc))
 
     def list_files(self):
@@ -88,11 +94,12 @@ class GcsFileTransfer(FileTransfer):
     
     def disconnect(self):
         # gcs client does not require an explicit disconnect
-        pass
+        if self.service_account:
+            os.remove(self.auth_file)
 
 # Concrete type for FTP transfers
 class FtpFileTransfer(FileTransfer):
-    def __init__(self, connection_string):
+    def __init__(self, connection_string, service_account:str = None):
         self.ftp = None
         self.conn_str = connection_string
     
@@ -141,7 +148,7 @@ class FtpFileTransfer(FileTransfer):
 
 # Concrete type for SFTP transfers
 class SftpFileTransfer(FileTransfer):
-    def __init__(self, connection_string):
+    def __init__(self, connection_string, service_account:str = None):
         self.sftp = None
         self.conn_str = connection_string
     
