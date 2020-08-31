@@ -2,11 +2,13 @@
 
 from google.cloud import storage
 from urllib import parse
+import boto3
 import uuid
 import ftplib
 import pysftp
 import abc
 import fnmatch
+import json
 import os
 import logging
 
@@ -200,9 +202,84 @@ class SftpFileTransfer(FileTransfer):
         res = ['{}/{}'.format(folder_path, f) for f in self.sftp.listdir(folder_path)]
         return fnmatch.filter(res, '*' + self.conn_str.path[self.conn_str.path.rfind('/'):])
 
+class S3FileTransfer(FileTransfer):
+    """
+    Concrete FileTransfer for S3 connections
+    """
+    def __init__(self, connection_string, project, config_file):
+        FileTransfer.__init__(self, connection_string)
+        self.config_file = config_file
+        self.project = project
+        self.s3 = None
+        self.job_id = uuid.uuid4()
+    
+    def connect(self):
+        self.auth_file = '/tmp/{0}/{0}.json'.format(self.job_id)
+        client = storage.Client(self.project)
+
+        with open(self.auth_file, 'wb') as f:
+            client.download_blob_to_file(self.config_file, f)
+            
+        with open(self.auth_file, 'r') as fi:
+            config = json.loads(fi.read())
+
+        self.s3 = boto3.client(
+            service_name='s3',
+            aws_access_key_id=config['access_key_id'],
+            aws_secret_access_key=config['secret_access_key']
+        )
+
+        logging.info('Connected to S3 in profile: {}'.format(boto3.DEFAULT_SESSION.profile_name))
+    
+    def disconnect(self):
+        logging.info('Disconnected from S3 in profile: {}'.format(boto3.DEFAULT_SESSION.profile_name))
+    
+    def download_file(self, file_path: str):
+        # removing the leading / so as to not create a folder with it
+        base_path = '{}/'.format(self.connection_string.path[1:self.connection_string.path.rfind('/')])
+        base_path = base_path if base_path != '/' else ''
+
+        file_name = file_path.split('/')[-1]
+        dest_path = '/tmp/{}/{}'.format(self.job_id, file_name)
+
+        with open(dest_path, 'wb') as f:
+            self.s3.download_fileobj(self.connection_string.netloc, '{}{}'.format(base_path, file_name), f)
+
+        logging.info('Downloaded file {} from S3 {} successfully'.format(file_name, self.connection_string.netloc))
+
+        return dest_path
+    
+    def upload_file(self, file_path):
+        # creating the final file path
+        base_path = self.connection_string.path[1:]
+        base_path = base_path if base_path.endswith('/') or base_path == '' else '{}/'.format(base_path)
+        path = '{}{}'.format(base_path, file_path[file_path.rfind('/') + 1:])
+
+        with open(file_path, "rb") as f:
+            self.s3.upload_fileobj(f, self.connection_string.netloc, path)
+
+        logging.info('Uploaded file {} to S3 {} successfully'.format(file_path, self.connection_string.netloc))
+    
+    def remove_file(self, file_path):
+        # creating the final file path
+        self.s3.Object(self.connection_string.netloc, file_path).delete()
+        
+        logging.info('Removed file {} from S3 {} successfully'.format(file_path, self.connection_string.netloc))
+
+    def list_files(self):
+        folder_path = self.connection_string.path[:self.connection_string.path.rfind('/')]
+        # listdir does not include the folder path, so we manually add it
+        files = [f['Key'] for f in self.s3.list_objects_v2(Bucket=self.connection_string.netloc).get('Contents', [])]
+        res = ['{}/{}'.format(folder_path, f) for f in files]
+        match = fnmatch.filter(res, '*' + self.connection_string.path[self.connection_string.path.rfind('/'):])
+        logging.info('Matched files: {}'.format(', '.join(match)))
+
+        return match
+
 def get_transfer_types():
     return {
         'ftp': FtpFileTransfer,
         'sftp': SftpFileTransfer,
-        'gs': GcsFileTransfer
+        'gs': GcsFileTransfer,
+        's3': S3FileTransfer
     }
