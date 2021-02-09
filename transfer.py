@@ -279,6 +279,7 @@ class S3FileTransfer(FileTransfer):
 def get_transfer_types():
     return {
         'ftp': FtpFileTransfer,
+        'ftps': FtpFileTransfer,
         'sftp': SftpFileTransfer,
         'gs': GcsFileTransfer,
         's3': S3FileTransfer
