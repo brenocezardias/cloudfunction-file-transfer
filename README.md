@@ -1,7 +1,7 @@
-# Cloud Function - Transferência de arquivos
+# Cloud Function - File transference
 
-Função que transfere, um a um, arquivos em uma localização para outra (i.e. copia arquivos de um FTP para um bucket GCS).
-A função é baseada em uma mensagem do Pub/Sub que deve ser um JSON no seguinte formato:
+Function that transfers, one by one, files in one location to another (i.e. copies files from an FTP to a GCS bucket).
+The function is based on a Pub/Sub message which must be a JSON in the following format:
 ```
 {
     "source_connection_string": "ftp://FTP/TEMP?username=user&password=pass",
@@ -13,48 +13,43 @@ A função é baseada em uma mensagem do Pub/Sub que deve ser um JSON no seguint
     "service_account": "gs://BUCKET/service-account-json.json"
 }
 ```
-O atributo `remove_file` determina se o arquivo deve ou não ser removido da origem caso ele seja copiado com sucesso para o destino.
+The `remove_file` attribute determines whether or not the file should be removed from the source if it is successfully copied to the destination.
 
-Os atributos `compress_algorithm` e `decompress_algorithm` determinam que o arquivo deve ser compactado ou descompactado, respectivamente, antes de ser enviado para o destino.
+The attributes `compress_algorithm` and `decompress_algorithm` determine that the file must be zipped or unzipped, respectively, before being sent to the destination.
 
-O atributo `event_date`, se fornecido, será utilizado para encerrar as re-tentativas após 1 hora de falhas (o GCF encerra após 7 dias de tentativas).
+The `event_date` attribute, if provided, will be used to terminate retries after 1 hour of failures (GCF terminates after 7 days of attempts).
 
-O atributo `service_account`, se fornecido, será utilizado para instanciar clientes GCS usando outra service account do GCP.
-Só é utilizado para GCS e, caso o atributo não seja fornecido, irá utilizar a conta de serviço definida no GCF.
+The `service_account` attribute, if provided, will be used to instantiate GCS clients using another GCP service account.
+It is only used for GCS and if the attribute is not provided it will use the service account defined in the GCF.
 
-As connection strings devem seguir o padrão de URI. Atualmente suportamos as seguintes conexões:
+Connection strings must follow the URI pattern. We currently support the following connections:
 
 * FTP - `ftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD`
+* FTPS - `ftps://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD`
 * SFTP - `sftp://HOSTNAME/PATH/FILE?username=USERNAME&password=PASSWORD`
 * GCS - `gs://BUCKET/PATH/`
 
-Os tipos de compactação atualmente suportados são os seguintes:
+The currently supported compression types are as follows:
 
 * gzip
 * zip
 
-**ATENÇÃO**: os arquivos compactados recebidos como origem devem, obrigatoriamente, conter apenas um arquivo. Da mesma forma, cada arquivo enviado para o destino será compactado em seu próprio arquivo.
+**ATTENTION**: the compressed files received as source must, necessarily, contain only one file. Likewise, each file sent to the destination will be zipped into its own file.
 
-Para dar um padrão mínimo de consistência, os métodos de listar arquivos usados internamente listam todos os arquivos no nível da última parte do PATH e então fazemos o filtro via [fnmatch](https://docs.python.org/3.4/library/fnmatch.html) na parte final.
+To give a minimum standard of consistency, the file listing methods used internally list all files at the level of the last part of the PATH and then filter via [fnmatch](https://docs.python.org/3.4/library/fnmatch.html) in the final part.
 
-Por exemplo, vamos supor um PATH = `/ARQUIVOS/*_log.txt`. Primeiro listamos todos os arquivos em `/ARQUIVOS/`. Nessa lista, fazemos o filtro `*_log.txt`. Com isso, pelo menos no último nível teremos um comportamento igual em todos os tipos de conexão (ou seja, isso reduz a inconsistência no fato que uma conexão FTP aceita *wildcards* em qualquer local, ao passo que o GCS só permite ter um prefixo).
+For example, let's assume a PATH = `/FILES/*_log.txt`. First we list all files in `/FILES/`. In this list, we filter `*_log.txt`. With this, at least at the last level we will have the same behavior in all connection types (ie this reduces the inconsistency in the fact that an FTP connection accepts *wildcards* anywhere, whereas GCS only allows it to have one prefix ).
 
-**ATENÇÃO**: nenhuma validação é feita no caminho para o diretório. Ou seja, uma requisição do tipo `/ARQUIVOS/*/*_log.txt` irá funcionar para conexões FTP mas não em GCS. Lembre-se que a função só é recomendada em volumes relativamente pequenos de dados/arquivos.
+**ATTENTION**: no validation is done on the path to the directory. That is, a request like `/FILES/*/*_log.txt` will work for FTP connections but not GCS. Keep in mind that the function is only recommended on relatively small volumes of data/files.
 
 ## Environment Variables
 
-* **PROJECT** = Id do projeto (ex: modular-aileron-191222)
+* **PROJECT** = Project ID (ex: modular-aileron-191222)
 
 ## Deployment
 
-Publicar como Google Cloud Function - ambiente Python 3.7 com as variáveis acima. Utilizar um trigger de mensagem do PubSub.
+Publish as Google Cloud Function - environment Python 3.7 with the above variables. Use a PubSub message trigger.
 
 ## Built With
 
 * [Python](https://www.python.org/) - Runtime Environment
-
-### Autores
-
-* [**Lucas Rosa**](https://bitbucket.org/dotz-lucas-rosa/)
-
-[![Dotz](https://dotz.com.br/assets/dotz/img/new-site-content/logo_dotz.jpg)](https://dotz.com.br/)
